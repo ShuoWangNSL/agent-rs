@@ -136,6 +136,15 @@ pub(crate) fn lookup_reply<Storage: AsRef<[u8]>>(
     Ok(RequestStatusResponse::Replied { reply })
 }
 
+pub(crate) fn lookup_subnet_node<Storage: AsRef<[u8]>>(
+    certificate: Certificate<Storage>,
+    subnet_id: Principal,
+) -> Result<Vec<u8>, AgentError> {
+    let path_subnet_node = ["subnet".as_bytes(), subnet_id.as_slice(), "node".as_bytes()];
+
+    lookup_value(&certificate, path_subnet_node).map(<[u8]>::to_vec)
+}
+
 /// The path to [`lookup_value`]
 pub trait LookupPath {
     type Item<'a>: AsRef<[u8]>

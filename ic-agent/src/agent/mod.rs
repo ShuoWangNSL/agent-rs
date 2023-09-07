@@ -21,6 +21,7 @@ use time::OffsetDateTime;
 #[cfg(test)]
 mod agent_test;
 
+use crate::agent::response_authentication::lookup_subnet_node;
 use crate::{
     agent::{
         replica_api::{Envelope, ReadStateResponse},
@@ -703,6 +704,69 @@ impl Agent {
         lookup_canister_metadata(cert, canister_id, path)
     }
 
+    /// Request the /subnet.
+    pub async fn read_state_subnet(
+        &self,
+        effective_canister_id: Principal,
+    ) -> Result<(), AgentError> {
+        let paths: Vec<Vec<Label>> = vec![vec!["subnet".into()]];
+
+        let content = self.read_state_content(paths)?;
+        let serialized_bytes = sign_envelope(&content, self.identity.clone())?;
+
+        let read_state_response: ReadStateResponse = self
+            .read_state_endpoint(effective_canister_id, serialized_bytes)
+            .await?;
+        let cert_size = read_state_response.certificate.len();
+        let cert: Certificate = serde_cbor::from_slice(&read_state_response.certificate)
+            .map_err(AgentError::InvalidCborData)?;
+        let subnet_id = match &cert.delegation {
+            Some(delegation) => Principal::from_slice(&delegation.subnet_id),
+            None => Principal::from_text(
+                "tdb26-jop6k-aogll-7ltgs-eruif-6kk7m-qpktf-gdiqx-mxtrf-vb5e6-eqe",
+            )
+            .unwrap(),
+        };
+        println!(
+            "Certificate of path /subnet by subnet {} is {} bytes",
+            subnet_id.to_text(),
+            cert_size
+        );
+        self.verify(&cert, effective_canister_id)?;
+        let res_1 = self
+            .read_state_single_subnet(subnet_id, effective_canister_id)
+            .await?;
+        let res_2 = lookup_subnet_node(cert, subnet_id)?;
+        assert_eq!(res_1, res_2);
+        Ok(())
+    }
+
+    /// Request the /subnet/<subnet-id>.
+    pub async fn read_state_single_subnet(
+        &self,
+        subnet_id: Principal,
+        effective_canister_id: Principal,
+    ) -> Result<Vec<u8>, AgentError> {
+        let paths: Vec<Vec<Label>> = vec![vec!["subnet".into(), subnet_id.as_slice().into()]];
+
+        let content = self.read_state_content(paths)?;
+        let serialized_bytes = sign_envelope(&content, self.identity.clone())?;
+
+        let read_state_response: ReadStateResponse = self
+            .read_state_endpoint(effective_canister_id, serialized_bytes)
+            .await?;
+        let cert_size = read_state_response.certificate.len();
+        let cert: Certificate = serde_cbor::from_slice(&read_state_response.certificate)
+            .map_err(AgentError::InvalidCborData)?;
+        println!(
+            "Certificate of path /subnet/{} is {} bytes",
+            subnet_id.to_text(),
+            cert_size
+        );
+        self.verify(&cert, effective_canister_id)?;
+        lookup_subnet_node(cert, subnet_id)
+    }
+
     /// Fetches the status of a particular request by its ID.
     pub async fn request_status_raw(
         &self,
@@ -1086,6 +1150,10 @@ impl<'agent> QueryBuilder<'agent> {
 
     /// Make a query call. This will return a byte vector.
     pub async fn call(self) -> Result<Vec<u8>, AgentError> {
+        // read_state /subnet before the query call
+        self.agent
+            .read_state_subnet(self.effective_canister_id)
+            .await?;
         self.agent
             .query_raw(
                 self.canister_id,
