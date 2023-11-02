@@ -6,6 +6,7 @@ use candid::{
     CandidType, Decode, Deserialize, IDLArgs, IDLProg, TypeEnv,
 };
 use clap::{crate_authors, crate_version, Parser, ValueEnum};
+use colored::*;
 use ic_agent::{
     agent::{self, signed::SignedUpdate},
     agent::{
@@ -400,24 +401,44 @@ async fn main() -> Result<()> {
                     }
                     SubCommand::Query(_) => {
                         fetch_root_key_from_non_ic(&agent, &opts.replica).await?;
-                        let mut builder = agent.query(&t.canister_id, &t.method_name);
-                        if let Some(d) = expire_after {
-                            builder = builder.expire_after(d);
-                        }
+                        let mut res = Ok(Vec::new());
+                        for i in 0..3 {
+                            if i == 1 {
+                                // for _ in 0..3 {
+                                //     println!("Sleeping for 30 seconds...");
+                                //     std::thread::sleep(std::time::Duration::from_secs(10));
+                                // }
+                                println!("Press Enter to make more query calls...");
 
-                        builder
-                            .with_arg(arg)
-                            .with_effective_canister_id(effective_canister_id)
-                            .call()
-                            .await
+                                let mut buffer = String::new();
+                                std::io::stdin().read_line(&mut buffer).expect("Failed to read line");
+
+                                println!("You pressed Enter. Continuing...");
+                            }
+                            let mut builder = agent.query(&t.canister_id, &t.method_name);
+                            if let Some(d) = expire_after {
+                                builder = builder.expire_after(d);
+                            }
+                            println!("\nQuerying {} times...", (i + 1).to_string().bold());
+                            res = builder
+                                .with_arg(arg.clone())
+                                .with_effective_canister_id(effective_canister_id)
+                                .call()
+                                .await;
+                            if let Ok(ref blob) = res {
+                                print_idl_blob(blob, &t.output, &method_type)
+                                    .context("Failed to print result blob")?;
+                                println!();
+                                }
+                        }
+                        res
                     }
                     _ => unreachable!(),
                 };
 
                 match result {
-                    Ok(blob) => {
-                        print_idl_blob(&blob, &t.output, &method_type)
-                            .context("Failed to print result blob")?;
+                    Ok(_blob) => {
+
                     }
                     Err(AgentError::TransportError(_)) => return Ok(()),
                     Err(AgentError::HttpError(HttpErrorPayload {

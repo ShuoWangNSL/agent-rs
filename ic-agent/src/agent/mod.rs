@@ -11,6 +11,7 @@ pub use agent_config::AgentConfig;
 pub use agent_error::AgentError;
 pub use builder::AgentBuilder;
 use cached::{Cached, TimedCache};
+use colored::*;
 use ed25519_consensus::{Error as Ed25519Error, Signature, VerificationKey};
 #[doc(inline)]
 pub use ic_transport_types::{
@@ -52,6 +53,7 @@ use std::{
     task::{Context, Poll},
     time::Duration,
 };
+use hex::ToHex;
 
 const IC_STATE_ROOT_DOMAIN_SEPARATOR: &[u8; 14] = b"\x0Dic-state-root";
 
@@ -375,11 +377,14 @@ impl Agent {
     where
         A: serde::de::DeserializeOwned,
     {
+        let start = std::time::Instant::now();
         let bytes = self
             .transport
             .query(effective_canister_id, serialized_bytes)
             .await?;
-        serde_cbor::from_slice(&bytes).map_err(AgentError::InvalidCborData)
+        let res = serde_cbor::from_slice(&bytes).map_err(AgentError::InvalidCborData);
+        println!("Query call finishes and it takes {} ms.", start.elapsed().as_millis());
+        res
     }
 
     async fn read_state_endpoint<A>(
@@ -519,11 +524,36 @@ impl Agent {
                 let pubkey =
                     VerificationKey::try_from(<[u8; 32]>::try_from(&node_key[12..]).unwrap())
                         .map_err(|_| AgentError::MalformedPublicKey)?;
+                let hash_hex = signable.encode_hex::<String>();
+                let printed_hash = if hash_hex.len() > 10 {
+                    format!("{}...{}", &hash_hex[..5], &hash_hex[hash_hex.len()-5..])
+                } else {
+                    hash_hex
+                };
+                println!("Checking the query response from node {} with hash {}", &signature.identity.to_text()[..5].bright_blue(), printed_hash.bright_yellow());
+
+                let node_key_str = node_key.encode_hex::<String>();
+                let printed_node_key = if node_key_str.len() > 10 {
+                    format!("{}...{}", &node_key_str[..5], &node_key_str[node_key_str.len()-5..])
+                } else {
+                    node_key_str
+                };
+                // println!("Get the node public key from local cache: {}", printed_node_key.bright_green());
+
                 let sig = Signature::from(
                     <[u8; 64]>::try_from(&signature.signature[..])
                         .map_err(|_| AgentError::MalformedSignature)?,
                 );
-
+                println!("Verifying node signatures using node public key against response hash ...");
+                let sig_str = signature.signature.encode_hex::<String>();
+                let printed_sig = if sig_str.len() > 10 {
+                    format!("{}...{}", &sig_str[..5], &sig_str[sig_str.len()-5..])
+                } else {
+                    sig_str
+                };
+                println!("- Signatures   : [{}]", printed_sig.bright_red());
+                println!("- Public key   : {}", printed_node_key.bright_red());
+                println!("- Response hash: {}", printed_hash.bright_red());
                 match pubkey.verify(&sig, &signable) {
                     Err(Ed25519Error::InvalidSignature) => {
                         return Err(AgentError::QuerySignatureVerificationFailed)
@@ -537,6 +567,7 @@ impl Agent {
                     Ok(()) => (),
                     _ => unreachable!(),
                 }
+                println!("Signature verification passed!✅\n");
             }
             response
         } else {
@@ -996,17 +1027,24 @@ impl Agent {
         &self,
         canister: &Principal,
     ) -> Result<Arc<Subnet>, AgentError> {
+        println!("Parallelizing the query call and the retrieval of node keys...");
+        let start = std::time::Instant::now();
         let subnet = self
             .subnet_key_cache
             .lock()
             .unwrap()
             .get_subnet_by_canister(canister);
         if let Some(subnet) = subnet {
+            println!("Node keys are {} in local cache for canister {}.", "FOUND".to_string().bright_green(), canister.to_text().bold());
+            println!("Retrieving node keys from the local cache takes {} ms.", start.elapsed().as_millis());
             Ok(subnet)
         } else {
+            println!("Node keys are {} in local cache for canister {}.", "NOT FOUND".to_string().bright_red(), canister.to_text().bold());
+            println!("Start fetching them by a read_state call...");
             let cert = self
                 .read_state_raw(vec![vec!["subnet".into()]], *canister)
                 .await?;
+            println!("read_state call finishes and it takes {} ms.", start.elapsed().as_millis());
             let time = leb128::read::unsigned(&mut lookup_value(&cert.tree, [b"time".as_ref()])?)?;
             if (OffsetDateTime::now_utc()
                 - OffsetDateTime::from_unix_timestamp_nanos(time as _).unwrap())
@@ -1015,6 +1053,28 @@ impl Agent {
                 Err(AgentError::CertificateOutdated(self.ingress_expiry))
             } else {
                 let (subnet_id, subnet) = lookup_subnet(&cert, &self.root_key.read().unwrap())?;
+                let len = subnet.node_keys.len();
+                println!("Retrieved public keys of {} nodes in subnet {}.",len.to_string().bold(), subnet_id.to_text().bold());
+                println!("---------------------------------------------");
+                let mut count = 0;
+                for (node_id, node_key) in &subnet.node_keys {
+                    count += 1;
+                    if count > 10 {
+                        println!("... and {} more node keys", len - 10);
+                        break;
+                    }
+                    let node_key_str = node_key.encode_hex::<String>();
+                    let printed_node_key = if node_key_str.len() > 10 {
+                        format!("{}...{}", &node_key_str[..5], &node_key_str[node_key_str.len()-5..])
+                    } else {
+                        node_key_str
+                    };
+                    println!("node_id {} -> public_key {}", &node_id.to_text()[..5].bold(), printed_node_key.bold());
+                }
+
+                println!("Stored the node keys in local cache!");
+                println!("---------------------------------------------\n");
+
                 let subnet = Arc::new(subnet);
                 self.subnet_key_cache
                     .lock()

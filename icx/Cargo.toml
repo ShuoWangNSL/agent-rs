@@ -15,13 +15,14 @@ keywords = ["internet-computer", "agent", "icp", "dfinity", "call"]
 include = ["src", "Cargo.toml", "../LICENSE", "README.md"]
 
 [[bin]]
-name = "icx"
+name = "demo-icx"
 path = "src/main.rs"
 
 [dependencies]
 anyhow = { version = "1.0", features = ["backtrace"] }
 candid = { workspace = true, features = ["parser"] }
 clap = { workspace = true, features = ["derive", "cargo", "color"] }
+colored = "2.0.4"
 hex = { workspace = true }
 humantime = "2.0.1"
 ic-agent = { workspace = true, default-features = true }
