@@ -377,13 +377,14 @@ impl Agent {
     where
         A: serde::de::DeserializeOwned,
     {
-        let start = std::time::Instant::now();
+        let _start = std::time::Instant::now();
         let bytes = self
             .transport
             .query(effective_canister_id, serialized_bytes)
             .await?;
         let res = serde_cbor::from_slice(&bytes).map_err(AgentError::InvalidCborData);
-        println!("Query call finishes and it takes {} ms.", start.elapsed().as_millis());
+        // println!("Query call finishes and it takes {} ms.", start.elapsed().as_millis());
+        // println!("Received query response.");
         res
     }
 
@@ -530,8 +531,7 @@ impl Agent {
                 } else {
                     hash_hex
                 };
-                println!("Checking the query response from node {} with hash {}", &signature.identity.to_text()[..5].bright_blue(), printed_hash.bright_yellow());
-
+                println!("Checking the query response from node {}", &signature.identity.to_text()[..5].bright_blue());
                 let node_key_str = node_key.encode_hex::<String>();
                 let printed_node_key = if node_key_str.len() > 10 {
                     format!("{}...{}", &node_key_str[..5], &node_key_str[node_key_str.len()-5..])
@@ -551,9 +551,9 @@ impl Agent {
                 } else {
                     sig_str
                 };
-                println!("- Signatures   : [{}]", printed_sig.bright_red());
                 println!("- Public key   : {}", printed_node_key.bright_red());
                 println!("- Response hash: {}", printed_hash.bright_red());
+                println!("- Signatures   : [{}]", printed_sig.bright_red());
                 match pubkey.verify(&sig, &signable) {
                     Err(Ed25519Error::InvalidSignature) => {
                         return Err(AgentError::QuerySignatureVerificationFailed)
@@ -1027,24 +1027,24 @@ impl Agent {
         &self,
         canister: &Principal,
     ) -> Result<Arc<Subnet>, AgentError> {
-        println!("Parallelizing the query call and the retrieval of node keys...");
-        let start = std::time::Instant::now();
+        println!("Parallelizing the query call and the retrieval of node keys...\n");
+        let _start = std::time::Instant::now();
         let subnet = self
             .subnet_key_cache
             .lock()
             .unwrap()
             .get_subnet_by_canister(canister);
         if let Some(subnet) = subnet {
-            println!("Node keys are {} in local cache for canister {}.", "FOUND".to_string().bright_green(), canister.to_text().bold());
-            println!("Retrieving node keys from the local cache takes {} ms.", start.elapsed().as_millis());
+            println!("Node keys are {} in local cache for canister {}.", "FOUND".to_string().bright_green(), canister.to_text().bright_cyan());
+            // println!("Retrieving node keys from the local cache takes {} ms.", start.elapsed().as_millis());
             Ok(subnet)
         } else {
-            println!("Node keys are {} in local cache for canister {}.", "NOT FOUND".to_string().bright_red(), canister.to_text().bold());
-            println!("Start fetching them by a read_state call...");
+            println!("Node keys are {} in local cache for canister {}.", "NOT FOUND".to_string().bright_red(), canister.to_text().bright_cyan());
+            println!("Start fetching them by a remote read_state call...\n");
             let cert = self
                 .read_state_raw(vec![vec!["subnet".into()]], *canister)
                 .await?;
-            println!("read_state call finishes and it takes {} ms.", start.elapsed().as_millis());
+            // println!("read_state call finishes and it takes {} ms.", start.elapsed().as_millis());
             let time = leb128::read::unsigned(&mut lookup_value(&cert.tree, [b"time".as_ref()])?)?;
             if (OffsetDateTime::now_utc()
                 - OffsetDateTime::from_unix_timestamp_nanos(time as _).unwrap())
@@ -1054,8 +1054,8 @@ impl Agent {
             } else {
                 let (subnet_id, subnet) = lookup_subnet(&cert, &self.root_key.read().unwrap())?;
                 let len = subnet.node_keys.len();
-                println!("Retrieved public keys of {} nodes in subnet {}.",len.to_string().bold(), subnet_id.to_text().bold());
                 println!("---------------------------------------------");
+                println!("Read_state call finishes.\nRetrieved public keys of {} nodes in subnet {}.",len.to_string().bold(), subnet_id.to_text().bright_yellow());
                 let mut count = 0;
                 for (node_id, node_key) in &subnet.node_keys {
                     count += 1;
