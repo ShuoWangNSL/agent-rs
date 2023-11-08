@@ -402,7 +402,7 @@ async fn main() -> Result<()> {
                     SubCommand::Query(_) => {
                         fetch_root_key_from_non_ic(&agent, &opts.replica).await?;
                         let mut res = Ok(Vec::new());
-                        for i in 0..2 {
+                        for i in 0..3 {
                             if i == 1 {
                                 // for _ in 0..3 {
                                 //     println!("Sleeping for 30 seconds...");
