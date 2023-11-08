@@ -1035,11 +1035,11 @@ impl Agent {
             .unwrap()
             .get_subnet_by_canister(canister);
         if let Some(subnet) = subnet {
-            println!("Node keys are {} in local cache for canister {}.", "FOUND".to_string().bright_green(), canister.to_text().bright_cyan());
+            println!("Node keys are {} in local cache.", "FOUND".to_string().bright_green());
             // println!("Retrieving node keys from the local cache takes {} ms.", start.elapsed().as_millis());
             Ok(subnet)
         } else {
-            println!("Node keys are {} in local cache for canister {}.", "NOT FOUND".to_string().bright_red(), canister.to_text().bright_cyan());
+            println!("Node keys are {} in local cache.", "NOT FOUND".to_string().bright_red());
             println!("Start fetching them by a remote read_state call...\n");
             let cert = self
                 .read_state_raw(vec![vec!["subnet".into()]], *canister)
@@ -1055,7 +1055,7 @@ impl Agent {
                 let (subnet_id, subnet) = lookup_subnet(&cert, &self.root_key.read().unwrap())?;
                 let len = subnet.node_keys.len();
                 println!("---------------------------------------------");
-                println!("Read_state call finishes.\nRetrieved public keys of {} nodes in subnet {}.",len.to_string().bold(), subnet_id.to_text().bright_yellow());
+                println!("Read_state call returns the certificate of node keys.\nRetrieved public keys of {} nodes in subnet {}.",len.to_string().bold(), subnet_id.to_text().bright_yellow());
                 let mut count = 0;
                 for (node_id, node_key) in &subnet.node_keys {
                     count += 1;

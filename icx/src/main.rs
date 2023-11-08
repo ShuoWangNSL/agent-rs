@@ -419,7 +419,8 @@ async fn main() -> Result<()> {
                             if let Some(d) = expire_after {
                                 builder = builder.expire_after(d);
                             }
-                            println!("\nQuerying the account balance {} times...", (i + 1).to_string().bold());
+                            let output = format!("\nQuerying the account balance {} times...", i + 1);
+                            println!("{}", output.to_string().bold());
                             res = builder
                                 .with_arg(arg.clone())
                                 .with_effective_canister_id(effective_canister_id)
